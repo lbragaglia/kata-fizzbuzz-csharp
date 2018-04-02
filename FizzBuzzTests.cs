@@ -1,12 +1,13 @@
 using Xunit;
 using FluentAssertions;
 using System.Linq;
+using Optional;
 
 namespace kata_fizzbuzz_csharp
 {
     public class FizzBuzzTests
     {
-        private readonly FizzBuzzer _sut;
+        private readonly INumberTranslator _sut;
 
         public FizzBuzzTests()
         {
@@ -38,58 +39,103 @@ namespace kata_fizzbuzz_csharp
         [InlineData(7*5*3*2, "FizzBuzzBang")]
         public void ShouldPrintInputNumber(int input, string expected)
         {
-            _sut.Print(input).Should().Be(expected);
+            _sut.Print(input).ValueOr("").Should().Be(expected);
         }
     }
 
     internal class FizzBuzzFactory
     {
-        internal FizzBuzzer Create()
-        {
-            return new FizzBuzzer(new DefaultTranslator(), new Fizzer(), new Buzzer(), new Banger());
-        }
-    }
-
-    internal class Buzzer: INumberTranslator
-    {
-        public string Print(int number) => number % 5 == 0 ? "Buzz" : null;
-    }
-
-    internal class DefaultTranslator: INumberTranslator
-    {
-        public string Print(int number) => number.ToString();
-    }
-
-    internal class Fizzer: INumberTranslator
-    {
-        public string Print(int number) => number % 3 == 0 ? "Fizz" : null;
-    }
-
-    internal class Banger: INumberTranslator
-    {
-        public string Print(int number) => number % 7 == 0 ? "Bang" : null;
+        internal INumberTranslator Create() => new OrNumberTranslator(
+            new Fizzer(new Buzzer(new Banger(new NoneTranslator()))),
+            new NumberTranslator()
+        );
     }
 
     internal interface INumberTranslator
     {
-        string Print(int number);
+        Option<string> Print(int number);
     }
 
-    internal class FizzBuzzer
+    internal class OrNumberTranslator : INumberTranslator
     {
-        private readonly INumberTranslator[] _fizzer;
-        private readonly INumberTranslator _default;
+        private readonly INumberTranslator _left;
+        private readonly INumberTranslator _right;
 
-        public FizzBuzzer(INumberTranslator @default, params INumberTranslator[] fizzer)
+        public OrNumberTranslator(INumberTranslator left, INumberTranslator right)
         {
-            this._fizzer = fizzer;
-            this._default = @default;
+            _left = left;
+            _right = right;
         }
 
-        internal string Print(int number)
+        public Option<string> Print(int number)
         {
-            var result = _fizzer.Select(f => f.Print(number) ?? "").Aggregate((a,b) => a + b);
-            return string.IsNullOrEmpty(result) ? _default.Print(number) : result;
+            return _left.Print(number).Else(() => _right.Print(number));
         }
+    }
+
+    internal class AndNumberTranslator : INumberTranslator
+    {
+        private readonly INumberTranslator _left;
+        private readonly INumberTranslator _right;
+
+        public AndNumberTranslator(INumberTranslator left, INumberTranslator right)
+        {
+            _left = left;
+            _right = right;
+        }
+
+        public Option<string> Print(int number)
+        {
+            var leftResult = _left.Print(number);
+            var rightResult = _right.Print(number);
+
+            if (!leftResult.HasValue) return rightResult;
+            if (!rightResult.HasValue) return leftResult;
+
+            return Option.Some(leftResult.ValueOr("") + rightResult.ValueOr(""));
+        }
+    }
+
+    internal class FactorTranslator : INumberTranslator
+    {
+        private readonly int _factor;
+        private readonly string _translation;
+
+        public FactorTranslator(int factor, string translation)
+        {
+            _factor = factor;
+            _translation = translation;
+        }
+
+        public Option<string> Print(int number) => _translation.SomeWhen(_ => number.MultipleOf(_factor));
+    }
+
+    internal class Buzzer : AndNumberTranslator
+    {
+        public Buzzer(INumberTranslator other) : base(new FactorTranslator(5, "Buzz"), other) { }
+    }
+
+    internal class Fizzer : AndNumberTranslator
+    {
+        public Fizzer(INumberTranslator other) : base(new FactorTranslator(3, "Fizz"), other) { }
+    }
+
+    internal class Banger : AndNumberTranslator
+    {
+        public Banger(INumberTranslator other) : base(new FactorTranslator(7, "Bang"), other) { }
+    }
+
+    internal class NoneTranslator : INumberTranslator
+    {
+        public Option<string> Print(int number) => Option.None<string>();
+    }
+
+    internal class NumberTranslator: INumberTranslator
+    {
+        public Option<string> Print(int number) => number.ToString().Some();
+    }
+
+    static class IntExtensions {
+        internal static bool MultipleOf(this int number, int factor) => number % factor == 0;
     }
 }
