@@ -46,7 +46,13 @@ namespace kata_fizzbuzz_csharp
     internal class FizzBuzzFactory
     {
         internal INumberTranslator Create() => new OrNumberTranslator(
-            new Fizzer(new Buzzer(new Banger(new NoneTranslator()))),
+            new AndNumberTranslator(
+                new Fizzer(),
+                new AndNumberTranslator(
+                    new Buzzer(),
+                    new Banger()
+                )
+            ),
             new NumberTranslator()
         );
     }
@@ -84,16 +90,7 @@ namespace kata_fizzbuzz_csharp
             _right = right;
         }
 
-        public Option<string> Print(int number)
-        {
-            var leftResult = _left.Print(number);
-            var rightResult = _right.Print(number);
-
-            if (!leftResult.HasValue) return rightResult;
-            if (!rightResult.HasValue) return leftResult;
-
-            return Option.Some(leftResult.ValueOr("") + rightResult.ValueOr(""));
-        }
+        public Option<string> Print(int number) => _left.Print(number).Concat(_right.Print(number));
     }
 
     internal class FactorTranslator : INumberTranslator
@@ -110,24 +107,19 @@ namespace kata_fizzbuzz_csharp
         public Option<string> Print(int number) => _translation.SomeWhen(_ => number.MultipleOf(_factor));
     }
 
-    internal class Buzzer : AndNumberTranslator
+    internal class Buzzer : FactorTranslator
     {
-        public Buzzer(INumberTranslator other) : base(new FactorTranslator(5, "Buzz"), other) { }
+        public Buzzer() : base(5, "Buzz") { }
     }
 
-    internal class Fizzer : AndNumberTranslator
+    internal class Fizzer : FactorTranslator
     {
-        public Fizzer(INumberTranslator other) : base(new FactorTranslator(3, "Fizz"), other) { }
+        public Fizzer() : base(3, "Fizz") { }
     }
 
-    internal class Banger : AndNumberTranslator
+    internal class Banger : FactorTranslator
     {
-        public Banger(INumberTranslator other) : base(new FactorTranslator(7, "Bang"), other) { }
-    }
-
-    internal class NoneTranslator : INumberTranslator
-    {
-        public Option<string> Print(int number) => Option.None<string>();
+        public Banger() : base(7, "Bang") { }
     }
 
     internal class NumberTranslator: INumberTranslator
@@ -137,5 +129,14 @@ namespace kata_fizzbuzz_csharp
 
     static class IntExtensions {
         internal static bool MultipleOf(this int number, int factor) => number % factor == 0;
+    }
+
+    static class OptionExtensions {
+        internal static Option<string> Concat(this Option<string> left, Option<string> right) {
+            if (!left.HasValue) return right;
+            if (!right.HasValue) return left;
+
+            return Option.Some(left.ValueOr("") + right.ValueOr(""));
+        }
     }
 }
