@@ -136,7 +136,7 @@ namespace kata_fizzbuzz_csharp
             if (!left.HasValue) return right;
             if (!right.HasValue) return left;
 
-            return Option.Some(left.ValueOr("") + right.ValueOr(""));
+            return left.FlatMap(leftValue => right.Map(rightValue => leftValue + rightValue));
         }
     }
 }
