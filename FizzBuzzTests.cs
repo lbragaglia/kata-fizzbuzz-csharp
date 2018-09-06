@@ -1,7 +1,7 @@
-using Xunit;
-using FluentAssertions;
 using System.Linq;
+using FluentAssertions;
 using Optional;
+using Xunit;
 
 namespace kata_fizzbuzz_csharp
 {
@@ -31,24 +31,27 @@ namespace kata_fizzbuzz_csharp
         [InlineData(14, "Bang")]
         [InlineData(15, "FizzBuzz")]
         [InlineData(30, "FizzBuzz")]
-        [InlineData(7*3, "FizzBang")]
-        [InlineData(7*3*2, "FizzBang")]
-        [InlineData(7*5, "BuzzBang")]
-        [InlineData(7*5*2, "BuzzBang")]
-        [InlineData(7*5*3, "FizzBuzzBang")]
-        [InlineData(7*5*3*2, "FizzBuzzBang")]
-        public void ShouldPrintInputNumber(int input, string expected)
+        [InlineData(7 * 3, "FizzBang")]
+        [InlineData(7 * 3 * 2, "FizzBang")]
+        [InlineData(7 * 5, "BuzzBang")]
+        [InlineData(7 * 5 * 2, "BuzzBang")]
+        [InlineData(7 * 5 * 3, "FizzBuzzBang")]
+        [InlineData(7 * 5 * 3 * 2, "FizzBuzzBang")]
+        public void ShouldPrintTranslatedInputNumber(int input, string expected)
         {
-            _sut.Print(input).ValueOr("").Should().Be(expected);
+            _sut.Print(input).Match(
+                some: actual => actual.Should().Be(expected),
+                none: () => throw new Xunit.Sdk.XunitException("None result")
+            );
         }
     }
 
     internal class FizzBuzzFactory
     {
-        internal INumberTranslator Create() => new OrNumberTranslator(
-            new AndNumberTranslator(
+        internal INumberTranslator Create() => new DefaultingTranslator(
+            new ConcatenatingTranslator(
                 new Fizzer(),
-                new AndNumberTranslator(
+                new ConcatenatingTranslator(
                     new Buzzer(),
                     new Banger()
                 )
@@ -62,29 +65,26 @@ namespace kata_fizzbuzz_csharp
         Option<string> Print(int number);
     }
 
-    internal class OrNumberTranslator : INumberTranslator
+    internal class DefaultingTranslator : INumberTranslator
     {
-        private readonly INumberTranslator _left;
-        private readonly INumberTranslator _right;
+        private readonly INumberTranslator _primary;
+        private readonly INumberTranslator _default;
 
-        public OrNumberTranslator(INumberTranslator left, INumberTranslator right)
+        public DefaultingTranslator(INumberTranslator primary, INumberTranslator @default)
         {
-            _left = left;
-            _right = right;
+            _primary = primary;
+            _default = @default;
         }
 
-        public Option<string> Print(int number)
-        {
-            return _left.Print(number).Else(() => _right.Print(number));
-        }
+        public Option<string> Print(int number) => _primary.Print(number).Else(() => _default.Print(number));
     }
 
-    internal class AndNumberTranslator : INumberTranslator
+    internal class ConcatenatingTranslator : INumberTranslator
     {
         private readonly INumberTranslator _left;
         private readonly INumberTranslator _right;
 
-        public AndNumberTranslator(INumberTranslator left, INumberTranslator right)
+        public ConcatenatingTranslator(INumberTranslator left, INumberTranslator right)
         {
             _left = left;
             _right = right;
@@ -93,46 +93,49 @@ namespace kata_fizzbuzz_csharp
         public Option<string> Print(int number) => _left.Print(number).Concat(_right.Print(number));
     }
 
-    internal class FactorTranslator : INumberTranslator
+    internal class DivisorTranslator : INumberTranslator
     {
-        private readonly int _factor;
+        private readonly int _divisor;
         private readonly string _translation;
 
-        public FactorTranslator(int factor, string translation)
+        public DivisorTranslator(int divisor, string translation)
         {
-            _factor = factor;
+            _divisor = divisor;
             _translation = translation;
         }
 
-        public Option<string> Print(int number) => _translation.SomeWhen(_ => number.MultipleOf(_factor));
+        public Option<string> Print(int number) => _translation.SomeWhen(_ => number.MultipleOf(_divisor));
     }
 
-    internal class Buzzer : FactorTranslator
+    internal class Buzzer : DivisorTranslator
     {
         public Buzzer() : base(5, "Buzz") { }
     }
 
-    internal class Fizzer : FactorTranslator
+    internal class Fizzer : DivisorTranslator
     {
         public Fizzer() : base(3, "Fizz") { }
     }
 
-    internal class Banger : FactorTranslator
+    internal class Banger : DivisorTranslator
     {
         public Banger() : base(7, "Bang") { }
     }
 
-    internal class NumberTranslator: INumberTranslator
+    internal class NumberTranslator : INumberTranslator
     {
         public Option<string> Print(int number) => number.ToString().Some();
     }
 
-    static class IntExtensions {
-        internal static bool MultipleOf(this int number, int factor) => number % factor == 0;
+    static class IntExtensions
+    {
+        internal static bool MultipleOf(this int number, int divisor) => number % divisor == 0;
     }
 
-    static class OptionExtensions {
-        internal static Option<string> Concat(this Option<string> left, Option<string> right) {
+    static class OptionExtensions
+    {
+        internal static Option<string> Concat(this Option<string> left, Option<string> right)
+        {
             if (!left.HasValue) return right;
             if (!right.HasValue) return left;
 
